@@ -76,38 +76,46 @@ jobs:
               ray.collision_mask = 1
               ray.collide_with_bodies = true
               var capsule := CapsuleShape3D.new()
-              capsule.radius = 0.52
-              capsule.height = 2.35
+              capsule.radius = 0.44
+              capsule.height = 2.0
               var shape_query := PhysicsShapeQueryParameters3D.new()
               shape_query.shape = capsule
               shape_query.collision_mask = 1
               shape_query.collide_with_bodies = true
-              shape_query.margin = 0.03
+              shape_query.margin = 0.02
               var candidates: Array[Vector3] = [
                   Vector3(0, 0, 0), Vector3(8, 0, 8), Vector3(-8, 0, 8),
                   Vector3(8, 0, -8), Vector3(-8, 0, -8), Vector3(15, 0, 0),
-                  Vector3(-15, 0, 0), Vector3(0, 0, 15), Vector3(0, 0, -15)
+                  Vector3(-15, 0, 0), Vector3(0, 0, 15), Vector3(0, 0, -15),
+                  Vector3(25, 0, 20), Vector3(-25, 0, 20),
+                  Vector3(25, 0, -20), Vector3(-25, 0, -20),
+                  Vector3(30, 0, 25), Vector3(-30, 0, 25)
               ]
               var rng := RandomNumberGenerator.new()
               rng.randomize()
-              for i in 240:
-                  candidates.append(Vector3(rng.randf_range(-30.0, 30.0), 0.0, rng.randf_range(-27.0, 27.0)))
+              for i in 160:
+                  candidates.append(Vector3(rng.randf_range(-32.0, 32.0), 0.0, rng.randf_range(-29.0, 29.0)))
               for p in candidates:
-                  ray.from = Vector3(p.x, 30.0, p.z)
-                  ray.to = Vector3(p.x, -5.0, p.z)
-                  var hit := space.intersect_ray(ray)
-                  if hit.is_empty():
-                      continue
-                  var normal: Vector3 = hit.normal
-                  var floor_point: Vector3 = hit.position
-                  if normal.dot(Vector3.UP) < 0.78 or floor_point.y > 2.5:
-                      continue
-                  shape_query.transform = Transform3D(Basis.IDENTITY, floor_point + Vector3(0.0, 1.28, 0.0))
-                  if space.intersect_shape(shape_query, 1).is_empty():
-                      print("PONTO DE NASCIMENTO LIVRE: ", floor_point)
-                      return floor_point + Vector3(0.0, 0.12, 0.0)
-              push_warning("Nenhum ponto plano livre encontrado; usando ponto de segurança elevado.")
-              return Vector3(0.0, 8.0, 0.0)
+                  var scan_y := 40.0
+                  for surface in 16:
+                      ray.from = Vector3(p.x, scan_y, p.z)
+                      ray.to = Vector3(p.x, -8.0, p.z)
+                      var hit := space.intersect_ray(ray)
+                      if hit.is_empty():
+                          break
+                      var floor_point: Vector3 = hit.position
+                      var normal: Vector3 = hit.normal
+                      if normal.dot(Vector3.UP) >= 0.78 and floor_point.y <= 2.5:
+                          shape_query.transform = Transform3D(Basis.IDENTITY, floor_point + Vector3(0.0, 1.05, 0.0))
+                          if space.intersect_shape(shape_query, 1).is_empty():
+                              print("PONTO DE NASCIMENTO LIVRE: ", floor_point)
+                              return floor_point + Vector3(0.0, 0.08, 0.0)
+                      # Ignora telhados, tubos e faces laterais e continua procurando o piso abaixo.
+                      scan_y = floor_point.y - 0.06
+                      if scan_y <= -7.9:
+                          break
+              push_warning("Não foi encontrado piso livre; usando ponto alternativo baixo, fora do centro do mapa.")
+              return Vector3(30.0, 0.15, 25.0)
           ''')
           s=s.replace('func _spawn_player() -> void:', safe_spawn + '\nfunc _spawn_player() -> void:')
           s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\n    player.position = spawn_pos')
@@ -178,6 +186,23 @@ jobs:
           "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --editor --import 2>&1 | tee /tmp/godot-import.log
           if grep -E "SCRIPT ERROR:|Parse Error:|Failed to load script" /tmp/godot-import.log; then
             echo "ERRO: scripts GDScript inválidos durante a importação. APK não será gerado."
+            exit 1
+          fi
+          # Teste real de inicialização da cena 3D, não apenas importação/exportação.
+          cp RuinasPerdidas/project.godot /tmp/project.godot.original
+          sed -i 's#run/main_scene="res://scenes/main_menu.tscn"#run/main_scene="res://scenes/main.tscn"#' RuinasPerdidas/project.godot
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --quit-after 180 2>&1 | tee /tmp/godot-runtime.log
+          cp /tmp/project.godot.original RuinasPerdidas/project.godot
+          if grep -E "SCRIPT ERROR:|Parse Error:|Failed to load script|O novo mapa 3D não foi encontrado|Não foi possível importar o novo mapa" /tmp/godot-runtime.log; then
+            echo "ERRO: a cena de exploração não iniciou corretamente. APK não será publicado."
+            exit 1
+          fi
+          if ! grep -q "NOVO MAPA | colisão unificada criada" /tmp/godot-runtime.log; then
+            echo "ERRO: o mapa não confirmou a criação da colisão durante a execução. APK não será publicado."
+            exit 1
+          fi
+          if ! grep -q "PONTO DE NASCIMENTO LIVRE" /tmp/godot-runtime.log; then
+            echo "ERRO: nenhum ponto livre foi encontrado para o personagem. APK não será publicado."
             exit 1
           fi
           "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk" 2>&1 | tee /tmp/godot-export.log
