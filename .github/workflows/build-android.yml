@@ -102,10 +102,10 @@ jobs:
               var candidates: Array[Vector3] = []
               var center := _map_bounds.get_center()
               candidates.append(Vector3(center.x, 0.0, center.z))
-              var min_x := _map_bounds.position.x + 1.5
-              var max_x := _map_bounds.end.x - 1.5
-              var min_z := _map_bounds.position.z + 1.5
-              var max_z := _map_bounds.end.z - 1.5
+              var min_x := _map_bounds.position.x + 3.0
+              var max_x := _map_bounds.end.x - 3.0
+              var min_z := _map_bounds.position.z + 3.0
+              var max_z := _map_bounds.end.z - 3.0
               for ix in 11:
                   for iz in 11:
                       candidates.append(Vector3(lerpf(min_x, max_x, float(ix) / 10.0), 0.0, lerpf(min_z, max_z, float(iz) / 10.0)))
@@ -113,7 +113,13 @@ jobs:
               rng.randomize()
               for i in 220:
                   candidates.append(Vector3(rng.randf_range(min_x, max_x), 0.0, rng.randf_range(min_z, max_z)))
+              # Prioriza pontos próximos ao centro, nunca o limite externo do mapa.
+              candidates.sort_custom(func(a: Vector3, b: Vector3) -> bool:
+                  return Vector2(a.x - center.x, a.z - center.z).length_squared() < Vector2(b.x - center.x, b.z - center.z).length_squared()
+              )
               for p in candidates:
+                  if Vector2(p.x - center.x, p.z - center.z).length() > 30.0:
+                      continue
                   var scan_y := _map_bounds.end.y + 3.0
                   for surface in 20:
                       ray.from = Vector3(p.x, scan_y, p.z)
