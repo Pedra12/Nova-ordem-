@@ -3,8 +3,6 @@ name: Inspecionar novo mapa
 on:
   workflow_dispatch:
   push:
-    paths:
-      - ".github/workflows/inspecionar-mapa.yml"
 
 permissions:
   contents: read
