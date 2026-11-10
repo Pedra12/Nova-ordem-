@@ -73,6 +73,7 @@ jobs:
               add_child(city)
           '''
           bounds_code = '''    city.name = "NovoMapa_ZombiePack_Exploracao"
+              city.scale = Vector3(1.5, 1.5, 1.5)
               add_child(city)
               _map_bounds = AABB()
               var has_map_bounds := false
@@ -89,6 +90,8 @@ jobs:
               print("NOVA ORDEM MAP BOUNDS: ", _map_bounds.position, " | ", _map_bounds.size)
           '''
           s=s.replace(bounds_insert,bounds_code)
+          # Aplicar à colisão a mesma escala e transformação do mapa visual.
+          s=s.replace('        add_child(map_body)', '        map_body.transform = city.transform\n        add_child(map_body)')
           # Escolher automaticamente um ponto com chão e espaço livre para o capsule do jogador.
           safe_spawn = textwrap.dedent('''
           func _find_safe_spawn_position() -> Vector3:
