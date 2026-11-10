@@ -109,12 +109,12 @@ jobs:
               push_warning("Nenhum ponto plano livre encontrado; usando ponto de segurança elevado.")
               return Vector3(0.0, 8.0, 0.0)
           ''')
-          s=s.replace('func _spawn_player() -> void:', safe_spawn + '\\nfunc _spawn_player() -> void:')
-          s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\\n    player.position = spawn_pos')
+          s=s.replace('func _spawn_player() -> void:', safe_spawn + '\nfunc _spawn_player() -> void:')
+          s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\n    player.position = spawn_pos')
           s=s.replace('    cam.global_position = START_POS + Vector3(0.0, 1.5, 0.0)','    cam.global_position = spawn_pos + Vector3(0.0, 1.5, 0.0)')
           s=s.replace('hud.show_message("Exploração livre • caminhe por todo o mapa")','hud.show_message("Nova Ordem • exploração livre")')
           # Esperar a física registrar o mapa e o piso antes de procurar o ponto de nascimento.
-          s=s.replace('    _build_exploration_ground()\\n    _spawn_player()', '    _build_exploration_ground()\\n    await get_tree().physics_frame\\n    _spawn_player()')
+          s=s.replace('    _build_exploration_ground()\n    _spawn_player()', '    _build_exploration_ground()\n    await get_tree().physics_frame\n    _spawn_player()')
           open(p,'w',encoding='utf-8').write(s)
           p='RuinasPerdidas/project.godot'
           s=open(p,encoding='utf-8').read().replace('config/name="Ruínas Perdidas"','config/name="Nova Ordem"').replace('config/description="Jogo 3D de ação e exploração para Android"','config/description="Exploração 3D livre para Android"')
@@ -175,8 +175,16 @@ jobs:
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
             keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --editor --import
-          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk"
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --editor --import 2>&1 | tee /tmp/godot-import.log
+          if grep -E "SCRIPT ERROR:|Parse Error:|Failed to load script" /tmp/godot-import.log; then
+            echo "ERRO: scripts GDScript inválidos durante a importação. APK não será gerado."
+            exit 1
+          fi
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk" 2>&1 | tee /tmp/godot-export.log
+          if grep -E "SCRIPT ERROR:|Parse Error:|Failed to load script" /tmp/godot-export.log; then
+            echo "ERRO: scripts GDScript inválidos durante a exportação. APK não será publicado."
+            exit 1
+          fi
           test -s RuinasPerdidas/build/NovaOrdem.apk
           "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose RuinasPerdidas/build/NovaOrdem.apk
           unzip -t RuinasPerdidas/build/NovaOrdem.apk | tail -2
