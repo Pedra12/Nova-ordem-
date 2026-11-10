@@ -1,0 +1,136 @@
+name: Compilar Nova Ordem Android
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-android.yml"
+      - "README.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nova-ordem-android-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Preparar projeto 3D base e novo mapa
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
+          curl -fL --retry 3 "https://codeload.github.com/Pedra12/Ruinas-Perdidas-Android/zip/refs/heads/main" -o /tmp/base.zip
+          mkdir -p /tmp/base /tmp/mapa
+          unzip -q /tmp/base.zip -d /tmp/base
+          BASE="$(find /tmp/base -mindepth 1 -maxdepth 1 -type d | head -1)"
+          mkdir -p RuinasPerdidas
+          cp -a "$BASE/RuinasPerdidas/." RuinasPerdidas/
+          curl -fL --retry 3 "https://github.com/Pedra12/Nova-ordem-/releases/download/V1.0.0/default.pending-1794873526-post-apocalyptic-city.zip" -o /tmp/mapa.zip
+          unzip -q /tmp/mapa.zip -d /tmp/mapa
+          test -s /tmp/mapa/source/Untitled.glb
+          mkdir -p RuinasPerdidas/assets/maps
+          cp /tmp/mapa/source/Untitled.glb RuinasPerdidas/assets/maps/Nova-Ordem.glb
+          python3 - <<'PY'
+          import json, struct, os, shutil
+          glb='RuinasPerdidas/assets/maps/Nova-Ordem.glb'
+          with open(glb,'rb') as f:
+              header=f.read(12)
+              magic,version,total=struct.unpack('<4sII',header)
+              if magic != b'glTF' or version != 2: raise SystemExit('GLB inválido ou versão incompatível')
+              length,kind=struct.unpack('<I4s',f.read(8))
+              if kind != b'JSON': raise SystemExit('Chunk JSON não encontrado')
+              doc=json.loads(f.read(length).decode('utf-8').rstrip(' \\0'))
+          uris=[]
+          for image in doc.get('images',[]):
+              uri=image.get('uri')
+              if uri and not uri.startswith('data:'): uris.append(uri)
+          for uri in uris:
+              src=os.path.join('/tmp/mapa',uri)
+              if not os.path.isfile(src):
+                  raise SystemExit('Textura externa ausente no pacote: '+uri)
+              dst=os.path.join('RuinasPerdidas/assets/maps',uri)
+              os.makedirs(os.path.dirname(dst),exist_ok=True)
+              shutil.copy2(src,dst)
+          print('GLB válido. Texturas externas:', uris)
+          print('Tamanho do GLB:', os.path.getsize(glb))
+          PY
+          python3 - <<'PY'
+          p='RuinasPerdidas/scripts/world/level.gd'
+          s=open(p,encoding='utf-8').read()
+          s=s.replace('const CITY_MAP_PATH := "res://assets/maps/Zombie-Pack.glb"','const CITY_MAP_PATH := "res://assets/maps/Nova-Ordem.glb"')
+          s=s.replace('const START_POS := Vector3(0.0, 0.3, 0.0)','const START_POS := Vector3(0.0, 1.5, 0.0)')
+          s=s.replace('hud.show_message("Exploração livre • caminhe por todo o mapa")','hud.show_message("Nova Ordem • exploração livre")')
+          open(p,'w',encoding='utf-8').write(s)
+          p='RuinasPerdidas/project.godot'
+          s=open(p,encoding='utf-8').read().replace('config/name="Ruínas Perdidas"','config/name="Nova Ordem"').replace('config/description="Jogo 3D de ação e exploração para Android"','config/description="Exploração 3D livre para Android"')
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+          test -s RuinasPerdidas/assets/maps/Nova-Ordem.glb
+          du -h RuinasPerdidas/assets/maps/Nova-Ordem.glb
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Instalar componentes Android
+        run: |
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.1" "ndk;28.1.13356709" "cmake;3.10.2.4988404"
+
+      - name: Baixar Godot 4.4.1 e templates
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          curl -fL --retry 3 "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz" -o /tmp/templates.tpz
+          mkdir -p /tmp/godot /tmp/templates "$HOME/.local/share/godot/export_templates/4.4.1.stable" "$HOME/.config/godot"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          chmod +x /tmp/godot/Godot_v4.4.1-stable_linux.x86_64
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          test -f "$HOME/.local/share/godot/export_templates/4.4.1.stable/version.txt" || printf "4.4.1.stable" > "$HOME/.local/share/godot/export_templates/4.4.1.stable/version.txt"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+          /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 --version
+
+      - name: Importar projeto, validar scripts e compilar APK
+        run: |
+          set -euo pipefail
+          GODOT=/tmp/godot/Godot_v4.4.1-stable_linux.x86_64
+          mkdir -p RuinasPerdidas/build "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --editor --import
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk"
+          test -s RuinasPerdidas/build/NovaOrdem.apk
+          "$ANDROID_HOME/build-tools/35.0.1/aapt" dump badging RuinasPerdidas/build/NovaOrdem.apk | head -20
+          ls -lh RuinasPerdidas/build/NovaOrdem.apk
+
+      - name: Publicar APK e diagnóstico
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nova-Ordem-Android-APK
+          path: |
+            RuinasPerdidas/build/NovaOrdem.apk
+            RuinasPerdidas/assets/maps/Nova-Ordem.glb
+          if-no-files-found: error
+          retention-days: 14
