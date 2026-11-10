@@ -63,6 +63,7 @@ jobs:
           print('Tamanho do GLB:', os.path.getsize(glb))
           PY
           python3 - <<'PY'
+          import textwrap
           p='RuinasPerdidas/scripts/world/level.gd'
           s=open(p,encoding='utf-8').read()
           s=s.replace('const CITY_MAP_PATH := "res://assets/maps/Zombie-Pack.glb"','const CITY_MAP_PATH := "res://assets/maps/Nova-Ordem.glb"')
