@@ -39,7 +39,7 @@ jobs:
           mkdir -p RuinasPerdidas/assets/maps
           cp /tmp/mapa/source/Untitled.glb RuinasPerdidas/assets/maps/Nova-Ordem.glb
           python3 - <<'PY'
-          import json, struct, os, shutil
+          import json, struct, os, shutil, textwrap
           glb='RuinasPerdidas/assets/maps/Nova-Ordem.glb'
           with open(glb,'rb') as f:
               header=f.read(12)
@@ -68,7 +68,7 @@ jobs:
           s=s.replace('const CITY_MAP_PATH := "res://assets/maps/Zombie-Pack.glb"','const CITY_MAP_PATH := "res://assets/maps/Nova-Ordem.glb"')
           s=s.replace('const START_POS := Vector3(0.0, 0.3, 0.0)','const START_POS := Vector3(0.0, 1.5, 0.0)')
           # Escolher automaticamente um ponto com chão e espaço livre para o capsule do jogador.
-          safe_spawn = '''
+          safe_spawn = textwrap.dedent('''
           func _find_safe_spawn_position() -> Vector3:
               var space := get_world_3d().direct_space_state
               var ray := PhysicsRayQueryParameters3D.new()
@@ -107,7 +107,7 @@ jobs:
                       return floor_point + Vector3(0.0, 0.12, 0.0)
               push_warning("Nenhum ponto plano livre encontrado; usando ponto de segurança elevado.")
               return Vector3(0.0, 8.0, 0.0)
-          '''
+          ''')
           s=s.replace('func _spawn_player() -> void:', safe_spawn + '\\nfunc _spawn_player() -> void:')
           s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\\n    player.position = spawn_pos')
           s=s.replace('    cam.global_position = START_POS + Vector3(0.0, 1.5, 0.0)','    cam.global_position = spawn_pos + Vector3(0.0, 1.5, 0.0)')
