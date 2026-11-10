@@ -1,0 +1,63 @@
+name: Analisar geometria do mapa
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/analisar-geometria.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar mapa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl unzip xz-utils
+          curl -fL --retry 3 "https://github.com/Pedra12/Nova-ordem-/releases/download/V1.0.0/default.pending-1794873526-post-apocalyptic-city.zip" -o /tmp/mapa.zip
+          mkdir -p /tmp/mapa
+          unzip -q /tmp/mapa.zip -d /tmp/mapa
+      - name: Instalar Blender e medir a cena
+        run: |
+          curl -fL --retry 3 "https://download.blender.org/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz" -o /tmp/blender.tar.xz
+          tar -xf /tmp/blender.tar.xz -C /tmp
+          cat > /tmp/inspect.py <<'PY'
+          import bpy, json, os
+          from mathutils import Vector
+          bpy.ops.wm.read_factory_settings(use_empty=True)
+          bpy.ops.import_scene.gltf(filepath='/tmp/mapa/source/Untitled.glb')
+          meshes=[o for o in bpy.context.scene.objects if o.type=='MESH']
+          deps=bpy.context.evaluated_depsgraph_get()
+          pts=[]
+          verts=polys=0
+          for o in meshes:
+              verts += len(o.data.vertices)
+              polys += len(o.data.polygons)
+              ev=o.evaluated_get(deps)
+              for c in ev.bound_box:
+                  pts.append(ev.matrix_world @ Vector(c))
+          if pts:
+              mins=[min(p[i] for p in pts) for i in range(3)]
+              maxs=[max(p[i] for p in pts) for i in range(3)]
+              dims=[maxs[i]-mins[i] for i in range(3)]
+          else: mins=maxs=dims=[0,0,0]
+          mats=set()
+          for o in meshes:
+              for m in o.data.materials:
+                  if m: mats.add(m.name)
+          result={'objects':len(bpy.context.scene.objects),'meshes':len(meshes),'vertices':verts,'polygons':polys,'bounds_min':mins,'bounds_max':maxs,'dimensions':dims,'materials':sorted(mats)}
+          os.makedirs('relatorio',exist_ok=True)
+          with open('relatorio/geometria.json','w') as f: json.dump(result,f,indent=2)
+          with open('relatorio/geometria.txt','w') as f: f.write(json.dumps(result,indent=2))
+          print(json.dumps(result,indent=2))
+          PY
+          /tmp/blender-4.5.3-linux-x64/blender -b -t 2 --python /tmp/inspect.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analise-geometria-nova-ordem
+          path: relatorio/
+          retention-days: 7
