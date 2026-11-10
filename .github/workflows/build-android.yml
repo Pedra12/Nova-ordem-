@@ -74,6 +74,15 @@ jobs:
           open(p,'w',encoding='utf-8').write(s)
           PY
           test -s RuinasPerdidas/assets/maps/Nova-Ordem.glb
+
+          # Remover mapas herdados do projeto-base. Manter somente o mapa Nova Ordem.
+          find RuinasPerdidas/assets/maps -maxdepth 1 -type f \\( -iname '*.glb' -o -iname '*.gltf' -o -iname '*.dae' -o -iname '*.obj' -o -iname '*.fbx' \\) ! -iname 'Nova-Ordem.glb' -delete
+          find RuinasPerdidas/assets/maps -maxdepth 1 -type f -iname '*.import' ! -iname 'Nova-Ordem.glb.import' -delete
+          # Descartar cache de importação antigo para impedir que mapas removidos reapareçam no APK.
+          rm -rf RuinasPerdidas/.godot
+          echo "Mapas 3D restantes:"
+          find RuinasPerdidas/assets/maps -maxdepth 1 -type f \\( -iname '*.glb' -o -iname '*.gltf' -o -iname '*.dae' -o -iname '*.obj' -o -iname '*.fbx' \\) -printf '%f\\n'
+          test "$(find RuinasPerdidas/assets/maps -maxdepth 1 -type f \\( -iname '*.glb' -o -iname '*.gltf' -o -iname '*.dae' -o -iname '*.obj' -o -iname '*.fbx' \\) | wc -l)" -eq 1
           du -h RuinasPerdidas/assets/maps/Nova-Ordem.glb
 
       - name: Configurar Java 17
@@ -124,6 +133,15 @@ jobs:
           test -s RuinasPerdidas/build/NovaOrdem.apk
           "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose RuinasPerdidas/build/NovaOrdem.apk
           unzip -t RuinasPerdidas/build/NovaOrdem.apk | tail -2
+          if unzip -Z1 RuinasPerdidas/build/NovaOrdem.apk | grep -qi 'rua-bela-vista'; then
+            echo "ERRO: mapa antigo Rua Bela Vista ainda está dentro do APK"
+            exit 1
+          fi
+          if unzip -Z1 RuinasPerdidas/build/NovaOrdem.apk | grep -qi 'Zombie-Pack'; then
+            echo "ERRO: mapa antigo Zombie-Pack ainda está dentro do APK"
+            exit 1
+          fi
+          echo "Verificação concluída: mapas antigos ausentes do APK."
           ls -lh RuinasPerdidas/build/NovaOrdem.apk
 
       - name: Publicar APK e diagnóstico
