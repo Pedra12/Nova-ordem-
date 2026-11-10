@@ -135,7 +135,7 @@ jobs:
                       if collider == null or collider.name == "PisoInvisivel_Exploracao":
                           break
                       var normal: Vector3 = hit.normal
-                      if normal.dot(Vector3.UP) >= 0.78 and floor_point.y <= _map_bounds.position.y + 3.0:
+                      if normal.dot(Vector3.UP) >= 0.78 and floor_point.y <= _map_bounds.position.y + 8.0:
                           var clear := true
                           for ox in [-0.48, 0.48]:
                               for oz in [-0.48, 0.48]:
