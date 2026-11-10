@@ -113,6 +113,8 @@ jobs:
           s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\\n    player.position = spawn_pos')
           s=s.replace('    cam.global_position = START_POS + Vector3(0.0, 1.5, 0.0)','    cam.global_position = spawn_pos + Vector3(0.0, 1.5, 0.0)')
           s=s.replace('hud.show_message("Exploração livre • caminhe por todo o mapa")','hud.show_message("Nova Ordem • exploração livre")')
+          # Esperar a física registrar o mapa e o piso antes de procurar o ponto de nascimento.
+          s=s.replace('    _build_exploration_ground()\\n    _spawn_player()', '    _build_exploration_ground()\\n    await get_tree().physics_frame\\n    _spawn_player()')
           open(p,'w',encoding='utf-8').write(s)
           p='RuinasPerdidas/project.godot'
           s=open(p,encoding='utf-8').read().replace('config/name="Ruínas Perdidas"','config/name="Nova Ordem"').replace('config/description="Jogo 3D de ação e exploração para Android"','config/description="Exploração 3D livre para Android"')
