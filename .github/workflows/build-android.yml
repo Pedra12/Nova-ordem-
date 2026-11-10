@@ -68,7 +68,7 @@ jobs:
           s=open(p,encoding='utf-8').read()
           s=s.replace('const CITY_MAP_PATH := "res://assets/maps/Zombie-Pack.glb"','const CITY_MAP_PATH := "res://assets/maps/Nova-Ordem.glb"')
           s=s.replace('const START_POS := Vector3(0.0, 0.3, 0.0)','const START_POS := Vector3(0.0, 1.5, 0.0)')
-          s=s.replace('var _rng := RandomNumberGenerator.new()','var _rng := RandomNumberGenerator.new()\\nvar _map_bounds := AABB()')
+          s=s.replace('var _rng := RandomNumberGenerator.new()','var _rng := RandomNumberGenerator.new()\nvar _map_bounds := AABB()')
           bounds_insert = '''    city.name = "NovoMapa_ZombiePack_Exploracao"
               add_child(city)
           '''
