@@ -1,0 +1,62 @@
+name: Inspecionar novo mapa
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/inspecionar-mapa.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar mapa do Release
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mapa
+          curl -fL --retry 3 \
+            "https://github.com/Pedra12/Nova-ordem-/releases/download/V1.0.0/default.pending-1794873526-post-apocalyptic-city.zip" \
+            -o /tmp/mapa/mapa.zip
+          test -s /tmp/mapa/mapa.zip
+          ls -lh /tmp/mapa/mapa.zip
+
+      - name: Inspecionar estrutura do ZIP
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile, os, json
+          p="/tmp/mapa/mapa.zip"
+          z=zipfile.ZipFile(p)
+          items=[]
+          for i in z.infolist():
+              if not i.is_dir():
+                  items.append({"path":i.filename,"size":i.file_size})
+          report={
+            "zip_bytes":os.path.getsize(p),
+            "files":len(items),
+            "total_uncompressed_bytes":sum(x["size"] for x in items),
+            "extensions":{},
+            "entries":items
+          }
+          for x in items:
+              ext=os.path.splitext(x["path"])[1].lower() or "[sem extensão]"
+              report["extensions"][ext]=report["extensions"].get(ext,0)+1
+          os.makedirs("relatorio",exist_ok=True)
+          with open("relatorio/inspecao-mapa.json","w") as f: json.dump(report,f,indent=2,ensure_ascii=False)
+          with open("relatorio/inspecao-mapa.txt","w") as f:
+              f.write(f"ZIP: {report['zip_bytes']} bytes\\nArquivos: {report['files']}\\nDescompactado: {report['total_uncompressed_bytes']} bytes\\n\\nExtensões:\\n")
+              for k,v in sorted(report["extensions"].items()): f.write(f"{k}: {v}\\n")
+              f.write("\\nArquivos (caminho | bytes):\\n")
+              for x in items: f.write(f"{x['path']} | {x['size']}\\n")
+          print(open("relatorio/inspecao-mapa.txt").read())
+          PY
+
+      - name: Publicar relatório
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspecao-nova-ordem
+          path: relatorio/
+          retention-days: 7
