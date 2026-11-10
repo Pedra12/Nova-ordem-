@@ -122,7 +122,8 @@ jobs:
           "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --editor --import
           "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk"
           test -s RuinasPerdidas/build/NovaOrdem.apk
-          "$ANDROID_HOME/build-tools/35.0.1/aapt" dump badging RuinasPerdidas/build/NovaOrdem.apk | head -20
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify --verbose RuinasPerdidas/build/NovaOrdem.apk
+          unzip -t RuinasPerdidas/build/NovaOrdem.apk | tail -2
           ls -lh RuinasPerdidas/build/NovaOrdem.apk
 
       - name: Publicar APK e diagnóstico
