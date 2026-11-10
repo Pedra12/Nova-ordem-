@@ -68,6 +68,27 @@ jobs:
           s=open(p,encoding='utf-8').read()
           s=s.replace('const CITY_MAP_PATH := "res://assets/maps/Zombie-Pack.glb"','const CITY_MAP_PATH := "res://assets/maps/Nova-Ordem.glb"')
           s=s.replace('const START_POS := Vector3(0.0, 0.3, 0.0)','const START_POS := Vector3(0.0, 1.5, 0.0)')
+          s=s.replace('var _rng := RandomNumberGenerator.new()','var _rng := RandomNumberGenerator.new()\\nvar _map_bounds := AABB()')
+          bounds_insert = '''    city.name = "NovoMapa_ZombiePack_Exploracao"
+              add_child(city)
+          '''
+          bounds_code = '''    city.name = "NovoMapa_ZombiePack_Exploracao"
+              add_child(city)
+              _map_bounds = AABB()
+              var has_map_bounds := false
+              for bound_node in city.find_children("*", "MeshInstance3D", true, false):
+                  var bound_mesh := bound_node as MeshInstance3D
+                  if bound_mesh == null or bound_mesh.mesh == null:
+                      continue
+                  var world_bounds: AABB = bound_mesh.global_transform * bound_mesh.get_aabb()
+                  if not has_map_bounds:
+                      _map_bounds = world_bounds
+                      has_map_bounds = true
+                  else:
+                      _map_bounds = _map_bounds.merge(world_bounds)
+              print("NOVA ORDEM MAP BOUNDS: ", _map_bounds.position, " | ", _map_bounds.size)
+          '''
+          s=s.replace(bounds_insert,bounds_code)
           # Escolher automaticamente um ponto com chão e espaço livre para o capsule do jogador.
           safe_spawn = textwrap.dedent('''
           func _find_safe_spawn_position() -> Vector3:
@@ -75,47 +96,51 @@ jobs:
               var ray := PhysicsRayQueryParameters3D.new()
               ray.collision_mask = 1
               ray.collide_with_bodies = true
-              var capsule := CapsuleShape3D.new()
-              capsule.radius = 0.44
-              capsule.height = 2.0
-              var shape_query := PhysicsShapeQueryParameters3D.new()
-              shape_query.shape = capsule
-              shape_query.collision_mask = 1
-              shape_query.collide_with_bodies = true
-              shape_query.margin = 0.02
-              var candidates: Array[Vector3] = [
-                  Vector3(0, 0, 0), Vector3(8, 0, 8), Vector3(-8, 0, 8),
-                  Vector3(8, 0, -8), Vector3(-8, 0, -8), Vector3(15, 0, 0),
-                  Vector3(-15, 0, 0), Vector3(0, 0, 15), Vector3(0, 0, -15),
-                  Vector3(25, 0, 20), Vector3(-25, 0, 20),
-                  Vector3(25, 0, -20), Vector3(-25, 0, -20),
-                  Vector3(30, 0, 25), Vector3(-30, 0, 25)
-              ]
+              if _map_bounds.size.length() < 1.0:
+                  push_error("Limites do mapa não foram calculados; spawn cancelado.")
+                  return Vector3(0.0, 1.5, 0.0)
+              var candidates: Array[Vector3] = []
+              var center := _map_bounds.get_center()
+              candidates.append(Vector3(center.x, 0.0, center.z))
+              var min_x := _map_bounds.position.x + 1.5
+              var max_x := _map_bounds.end.x - 1.5
+              var min_z := _map_bounds.position.z + 1.5
+              var max_z := _map_bounds.end.z - 1.5
+              for ix in 11:
+                  for iz in 11:
+                      candidates.append(Vector3(lerpf(min_x, max_x, float(ix) / 10.0), 0.0, lerpf(min_z, max_z, float(iz) / 10.0)))
               var rng := RandomNumberGenerator.new()
               rng.randomize()
-              for i in 160:
-                  candidates.append(Vector3(rng.randf_range(-32.0, 32.0), 0.0, rng.randf_range(-29.0, 29.0)))
+              for i in 220:
+                  candidates.append(Vector3(rng.randf_range(min_x, max_x), 0.0, rng.randf_range(min_z, max_z)))
               for p in candidates:
-                  var scan_y := 40.0
-                  for surface in 16:
+                  var scan_y := _map_bounds.end.y + 3.0
+                  for surface in 20:
                       ray.from = Vector3(p.x, scan_y, p.z)
-                      ray.to = Vector3(p.x, -8.0, p.z)
+                      ray.to = Vector3(p.x, _map_bounds.position.y - 3.0, p.z)
                       var hit := space.intersect_ray(ray)
                       if hit.is_empty():
                           break
                       var floor_point: Vector3 = hit.position
-                      var normal: Vector3 = hit.normal
-                      if normal.dot(Vector3.UP) >= 0.78 and floor_point.y <= 2.5:
-                          shape_query.transform = Transform3D(Basis.IDENTITY, floor_point + Vector3(0.0, 1.05, 0.0))
-                          if space.intersect_shape(shape_query, 1).is_empty():
-                              print("PONTO DE NASCIMENTO LIVRE: ", floor_point)
-                              return floor_point + Vector3(0.0, 0.08, 0.0)
-                      # Ignora telhados, tubos e faces laterais e continua procurando o piso abaixo.
-                      scan_y = floor_point.y - 0.06
-                      if scan_y <= -7.9:
+                      var collider := hit.get("collider") as Node
+                      if collider == null or collider.name == "PisoInvisivel_Exploracao":
                           break
-              push_warning("Não foi encontrado piso livre; usando ponto alternativo baixo, fora do centro do mapa.")
-              return Vector3(30.0, 0.15, 25.0)
+                      var normal: Vector3 = hit.normal
+                      if normal.dot(Vector3.UP) >= 0.78 and floor_point.y <= _map_bounds.position.y + 3.0:
+                          var clear := true
+                          for ox in [-0.48, 0.48]:
+                              for oz in [-0.48, 0.48]:
+                                  var check := PhysicsRayQueryParameters3D.create(Vector3(p.x + ox, floor_point.y + 0.12, p.z + oz), Vector3(p.x + ox, floor_point.y + 1.95, p.z + oz), 1)
+                                  if not space.intersect_ray(check).is_empty():
+                                      clear = false
+                          if clear:
+                              print("PONTO DE NASCIMENTO LIVRE NO MAPA: ", floor_point)
+                              return floor_point + Vector3(0.0, 0.10, 0.0)
+                      scan_y = floor_point.y - 0.06
+                      if scan_y <= _map_bounds.position.y - 2.9:
+                          break
+              push_error("Nenhum ponto livre foi encontrado na geometria real do mapa; não usar o piso invisível.")
+              return Vector3(0.0, 1.5, 0.0)
           ''')
           s=s.replace('func _spawn_player() -> void:', safe_spawn + '\nfunc _spawn_player() -> void:')
           s=s.replace('    player.position = START_POS','    var spawn_pos := _find_safe_spawn_position()\n    player.position = spawn_pos')
@@ -201,8 +226,8 @@ jobs:
             echo "ERRO: o mapa não confirmou a criação da colisão durante a execução. APK não será publicado."
             exit 1
           fi
-          if ! grep -q "PONTO DE NASCIMENTO LIVRE" /tmp/godot-runtime.log; then
-            echo "ERRO: nenhum ponto livre foi encontrado para o personagem. APK não será publicado."
+          if ! grep -q "PONTO DE NASCIMENTO LIVRE NO MAPA" /tmp/godot-runtime.log; then
+            echo "ERRO: nenhum ponto livre na geometria real do mapa foi encontrado. APK não será publicado."
             exit 1
           fi
           "$GODOT" --headless --path "$GITHUB_WORKSPACE/RuinasPerdidas" --export-debug "Android" "$GITHUB_WORKSPACE/RuinasPerdidas/build/NovaOrdem.apk" 2>&1 | tee /tmp/godot-export.log
